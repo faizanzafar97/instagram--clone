@@ -12,6 +12,11 @@ var userModel = require('./routes/users');
 const passport = require('passport');
 
 var app = express();
+const databaseReady = mongoose.connection.asPromise().then(() => userModel.init());
+databaseReady.catch(function(err) {
+  console.error('Database initialization failed:', err.message);
+});
+app.locals.databaseReady = databaseReady;
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -37,6 +42,17 @@ app.use(expressSession({
   secret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')
 }));
 app.use(passport.initialize());
+app.use(function(req, res, next) {
+  const needsDatabase = (req.session.passport && req.session.passport.user) ||
+    (req.method === 'POST' && ['/login', '/register'].includes(req.path));
+  if (!needsDatabase) return next();
+  const unavailable = () => next(createError(503, 'Database unavailable. Start MongoDB and try again'));
+  if (mongoose.connection.readyState === 0) return unavailable();
+  databaseReady.then(function() {
+    if (mongoose.connection.readyState !== 1) return unavailable();
+    next();
+  }, unavailable);
+});
 app.use(passport.session());
 passport.serializeUser(userModel.serializeUser());
 passport.deserializeUser(userModel.deserializeUser());

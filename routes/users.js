@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const plm = require("passport-local-mongoose");
 
-mongoose.set('bufferCommands', false);
 mongoose.connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/instainstaclone", {
   serverSelectionTimeoutMS: 5000
 }).catch(function (err) {
