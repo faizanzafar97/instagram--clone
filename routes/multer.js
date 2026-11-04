@@ -1,17 +1,73 @@
 const multer = require("multer");
 const path = require("path");
 const crypto = require("crypto");
+const fs = require("fs");
+const createError = require('http-errors');
+
+const uploadDirectory = path.join(__dirname, "../public/images/uploads");
+fs.mkdirSync(uploadDirectory, { recursive: true });
+const extensions = {
+  'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif',
+  'image/webp': '.webp', 'image/avif': '.avif'
+};
+
+async function removeFile(file) {
+  if (!file || path.dirname(path.resolve(file.path)) !== uploadDirectory) return;
+  try { await fs.promises.unlink(file.path); }
+  catch (err) { if (err.code !== 'ENOENT') throw err; }
+}
+
+async function verifyImage(file) {
+  const handle = await fs.promises.open(file.path, 'r');
+  const bytes = Buffer.alloc(64);
+  let bytesRead;
+  try { ({ bytesRead } = await handle.read(bytes, 0, bytes.length, 0)); }
+  finally { await handle.close(); }
+  const valid = bytesRead >= 12 && (
+    (file.mimetype === 'image/png' && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+    (file.mimetype === 'image/jpeg' && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) ||
+    (file.mimetype === 'image/gif' && ['GIF87a', 'GIF89a'].includes(bytes.toString('ascii', 0, 6))) ||
+    (file.mimetype === 'image/webp' && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP') ||
+    (file.mimetype === 'image/avif' && bytes.toString('ascii', 4, 8) === 'ftyp' &&
+      ['avif', 'avis'].some(brand => bytes.toString('ascii', 8, bytesRead).includes(brand)))
+  );
+  if (!valid) throw createError(400, 'The selected file is not a valid supported image');
+}
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "./public/images/uploads");
+    cb(null, uploadDirectory);
   },
   filename: function (req, file, cb) {
     const fn =
-      crypto.randomBytes(16).toString("hex") + path.extname(file.originalname);
+      crypto.randomBytes(16).toString("hex") + extensions[file.mimetype];
     cb(null, fn);
   },
 });
 
-const upload = multer({ storage: storage });
-module.exports = upload;
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: function (req, file, cb) {
+    if (!extensions[file.mimetype]) return cb(createError(400, 'Choose a PNG, JPEG, GIF, WebP or AVIF image'));
+    cb(null, true);
+  }
+});
+
+module.exports = {
+  removeFile,
+  single: function (field) {
+    const receive = upload.single(field);
+    return function (req, res, next) {
+      receive(req, res, function (err) {
+        if (err) return next(err);
+        if (!req.file) return next();
+        verifyImage(req.file).then(() => next()).catch(async function (validationError) {
+          try { await removeFile(req.file); }
+          catch (cleanupError) { console.error('Could not remove invalid image:', cleanupError.message); }
+          next(validationError);
+        });
+      });
+    };
+  }
+};

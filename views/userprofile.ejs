@@ -36,12 +36,10 @@
         <% } else { %>
             <a class="px-6 py-2 bg-zinc-800 text-xs rounded-md" href="/follow/<%= userprofile._id %>">Following</a>
         <% } %>
-        <a class="px-6 py-2 bg-zinc-800 text-xs rounded-md" href="/edit">Message</a>
-        <a class="px-6 py-2 bg-zinc-800 text-xs rounded-md" href="/edit">Contact</a>
       </div>
       <div class="posts w-full flex gap-1 py-2 mt-5 flex-wrap">
         <% if(userprofile.posts.length>0){ %>
-          <% userprofile.posts.reverse().forEach(function(post){ %>
+          <% userprofile.posts.forEach(function(post){ %>
             <div class="post w-[32.5%] h-32 bg-sky-100">
               <img class="w-full h-full object-cover" src="/images/uploads/<%= post.picture %>" alt="">
             </div>

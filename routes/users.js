@@ -1,16 +1,21 @@
 const mongoose = require('mongoose');
 const plm = require("passport-local-mongoose");
 
-mongoose.connect("mongodb://127.0.0.1:27017/instainsta");
+mongoose.set('bufferCommands', false);
+mongoose.connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/instainstaclone", {
+  serverSelectionTimeoutMS: 5000
+}).catch(function (err) {
+  console.error('MongoDB connection failed. Start MongoDB or set MONGODB_URI:', err.message);
+});
 
 const userSchema = mongoose.Schema({
-  username: String,
+  username: { type: String, required: true, unique: true, trim: true },
   name: String,
   email: String,
   password: String,
   picture: {
     type: String,
-    default: "def.png"
+    default: "default-avatar.svg"
   },
   contact: String,
   bio: String,

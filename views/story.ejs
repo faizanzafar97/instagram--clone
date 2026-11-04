@@ -1,0 +1,9 @@
+<% include ./partials/header.ejs %>
+<div class="w-full min-h-screen bg-zinc-900 text-white px-4 py-5 pb-20">
+  <div class="flex items-center justify-between mb-5">
+    <a href="/profile/<%= story.user.username %>"><%= story.user.username %></a>
+    <a href="/feed">Back to feed</a>
+  </div>
+  <img class="w-full object-contain" src="/images/uploads/<%= story.story %>" alt="Story by <%= story.user.username %>">
+</div>
+<% include ./partials/footer.ejs %>

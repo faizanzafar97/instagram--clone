@@ -5,39 +5,11 @@
             <input class="input ml-1 w-full bg-zinc-900 outline-none text-zinc-400" type="text"
                 placeholder="search username">
         </div>
+        <p id="searchstatus" role="status" class="text-zinc-400 mt-4"></p>
         <div class="users">
 
         </div>
     </div>
 
-    <script>
-        var inp = document.querySelector(".input")
-
-        inp.addEventListener("input", function (e) {
-            if (inp.value !== '') {
-                fetch(`/search/${inp.value}`)
-                    .then(raw => raw.json())
-                    .then(result => {
-                        let clutter = "";
-
-                        result.forEach((item) => {
-                            clutter += `<a href="/profile/${item.username}" class="outline-none">
-            <div class="text-white flex items-center gap-2 mt-5">
-                <div class="image w-[11vw] h-[11vw] rounded-full bg-sky-100 overflow-hidden">
-                    <img src="/images/uploads/${item.picture}" alt="">
-                    </div>
-                <div class="text">
-                    <h3>${item.username}</h3>
-                    <h4 class="text-xs opacity-30 leading-none">${item.name}</h4>
-                </div>
-            </div>            
-        </a>`
-                        })
-
-                        document.querySelector(".users")
-                            .innerHTML = clutter;
-                    });
-            }
-        })
-    </script>
-    <% include ./partials/footer.ejs %>
+    <script src="/javascripts/search.js" defer></script>
+<% include ./partials/footer.ejs %>

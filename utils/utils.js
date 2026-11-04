@@ -1,7 +1,9 @@
 var utils = {
     formatRelativeTime: function (date) {
         const now = new Date();
-        const diff = now - date;
+        const timestamp = new Date(date).getTime();
+        if (!Number.isFinite(timestamp)) return '';
+        const diff = Math.max(0, now.getTime() - timestamp);
       
         // Convert milliseconds to seconds
         const seconds = Math.floor(diff / 1000);
