@@ -16,11 +16,11 @@ function filesIn(directory) {
 
 test('all application JavaScript and EJS templates compile', function () {
   const files = ['app.js', 'bin/www'].map(file => path.join(root, file));
-  for (const folder of ['routes', 'utils', 'public/javascripts', 'views']) files.push(...filesIn(path.join(root, folder)));
+  for (const folder of ['routes', 'utils', 'public/javascripts', 'scripts', 'views']) files.push(...filesIn(path.join(root, folder)));
   for (const file of files) {
     const source = fs.readFileSync(file, 'utf8');
     if (file.endsWith('.ejs')) ejs.compile(source, { filename: file });
-    else if (file.endsWith('.js') || file.endsWith('bin' + path.sep + 'www')) new vm.Script(source, { filename: file });
+    else if (file.endsWith('.js') || file.endsWith('.cjs') || file.endsWith('bin' + path.sep + 'www')) new vm.Script(source, { filename: file });
   }
   // Render pages containing inline browser scripts and compile those scripts too.
   for (const file of files.filter(file => file.endsWith('.ejs') && !file.includes(path.sep + 'partials' + path.sep))) {

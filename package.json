@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "start": "node ./bin/www",
-    "test": "node --test"
+    "test": "node --test",
+    "test:browser": "node scripts/check-browser.cjs"
   },
   "dependencies": {
     "cookie-parser": "~1.4.4",

@@ -242,7 +242,7 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
       body.set('category', example.category || 'post');
       body.set(example.field || 'image', new Blob([example.bytes], { type: example.type }), 'test.png');
       const response = await request('/post', { method: 'POST', body, headers: { Accept: 'application/json' } });
-      assert.equal(response.status, example.status, JSON.stringify(example));
+      assert.equal(response.status, example.status, example.type + ' / ' + (example.category || 'post'));
       assert.equal(typeof JSON.parse(response.body).message, 'string');
       assert.deepEqual((await fs.readdir(uploadDirectory)).sort(), before);
     }
