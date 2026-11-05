@@ -73,6 +73,29 @@ async function browserScenario(imageBase64) {
     save.click();
     await waitFor(() => save.getAttribute('aria-pressed') === 'false');
     check(true, 'Save and unsave buttons update');
+    frame.contentDocument.querySelector('.commenttoggle').click();
+    const commentInput = frame.contentDocument.querySelector('.commentform textarea');
+    await waitFor(() => !commentInput.disabled);
+    const commentText = '<img src=x onerror="window.unexpectedComment=true">';
+    commentInput.value = commentText;
+    frame.contentDocument.querySelector('.commentform').requestSubmit();
+    await waitFor(() => frame.contentDocument.querySelector('.comment-entry') && !commentInput.disabled);
+    check(frame.contentDocument.querySelector('.comment-entry p').textContent === commentText &&
+      !frame.contentDocument.querySelector('.comments-list img') && !frame.contentWindow.unexpectedComment,
+      'Comments render text without HTML injection');
+    frame.contentDocument.querySelector('.replybutton').click();
+    check(!frame.contentDocument.querySelector('.reply-context').hidden, 'Reply selects the parent comment');
+    commentInput.value = 'Browser reply';
+    frame.contentDocument.querySelector('.commentform').requestSubmit();
+    await waitFor(() => frame.contentDocument.querySelector('.comment-replies .comment-entry') && !commentInput.disabled);
+    check(frame.contentDocument.querySelector('.commentcount').textContent === '2', 'Comment count includes replies');
+    check(frame.contentDocument.querySelector('.reply-context').hidden, 'Posting a reply resets the form');
+    await navigate('/feed');
+    frame.contentDocument.querySelector('.commenttoggle').click();
+    await waitFor(() => frame.contentDocument.querySelectorAll('.comment-entry').length === 2);
+    check(frame.contentDocument.querySelector('.comment-replies p').textContent === 'Browser reply', 'Comments and replies survive reload');
+    frame.contentDocument.querySelector('.commenttoggle').click();
+    check(frame.contentDocument.querySelector('.comments-panel').hidden, 'Comments can be collapsed');
     await navigate('/search');
     const search = frame.contentDocument.querySelector('.input');
     search.value = 'BROWSER_TESTER';

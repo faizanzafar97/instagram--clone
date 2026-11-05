@@ -63,7 +63,7 @@
                 <% } else { %>
                   <button type="button" class="likebutton" aria-label="Unlike post" aria-pressed="true"><i class="heart ri-heart-3-fill text-red-500"></i></button>
                   <% } %>
-                    <i class="ri-chat-3-line"></i>
+                    <button type="button" class="commenttoggle" aria-label="Show comments" aria-expanded="false" aria-controls="comments-<%= post.id %>"><i class="ri-chat-3-line"></i></button>
                     <i class="ri-share-circle-line"></i>
             </div>
             <% if(user.saved.indexOf(post.id)===-1){ %>
@@ -81,11 +81,32 @@
             </span>
             <%= post.caption %>
           </h2>
+          <div class="px-4 mt-3 text-sm">
+            <button type="button" class="commenttoggle text-zinc-400" aria-expanded="false" aria-controls="comments-<%= post.id %>"><span class="commentcount"><%= post.comments.length %></span> comments</button>
+            <section id="comments-<%= post.id %>" class="comments-panel mt-3" aria-label="Post comments" hidden>
+              <p class="comments-status text-zinc-400" role="status"></p>
+              <button type="button" class="comments-retry text-blue-500" hidden>Try again</button>
+              <div class="comments-list" aria-live="polite"></div>
+              <form class="commentform mt-3">
+                <div class="reply-context mb-2" hidden>
+                  <span class="reply-label text-zinc-400"></span>
+                  <button type="button" class="cancelreply text-blue-500 ml-2">Cancel</button>
+                </div>
+                <label class="block mb-2" for="comment-input-<%= post.id %>">Add a comment</label>
+                <div class="flex gap-2">
+                  <textarea id="comment-input-<%= post.id %>" name="text" rows="2" maxlength="1000" required class="w-full rounded bg-zinc-800 p-2" placeholder="Write a comment…"></textarea>
+                  <button type="submit" class="text-blue-500">Post</button>
+                </div>
+                <p class="comment-error text-red-500 mt-2" role="alert" hidden></p>
+              </form>
+            </section>
+          </div>
         </div>
         <% }) %>
     </div>
   </div>
 
   <script src="/javascripts/feed.js" defer></script>
+  <script src="/javascripts/comments.js" defer></script>
 
 <% include ./partials/footer.ejs %>

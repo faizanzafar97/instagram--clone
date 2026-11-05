@@ -6,6 +6,7 @@ const localStrategy = require("passport-local");
 const userModel = require("./users");
 const postModel = require("./posts");
 const storyModel = require("./story");
+const mongoose = require('mongoose');
 passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
 const utils = require("../utils/utils");
@@ -52,6 +53,40 @@ router.get("/like/:postid", isLoggedIn, asyncRoute(async function (req, res) {
   const updated = await postModel.findByIdAndUpdate(post._id, update, { new: true });
   if (!updated) throw createError(404, 'Post not found');
   res.json({ _id: updated.id, like: updated.like });
+}));
+
+router.get('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (req, res) {
+  const post = await postModel.findById(req.params.postid).select('comments')
+    .populate('comments.user', 'username picture');
+  if (!post) throw createError(404, 'Post not found');
+  res.json({ comments: post.comments });
+}));
+
+router.post('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (req, res) {
+  const text = textFrom(req.body.text, 'Comment', 1000);
+  if (!text) throw createError(400, 'Write a comment before posting');
+  const parent = req.body.parent;
+  if (parent !== undefined && parent !== null &&
+      (typeof parent !== 'string' || !mongoose.isObjectIdOrHexString(parent))) {
+    throw createError(400, 'Choose a valid comment to reply to');
+  }
+  const comment = {
+    _id: new mongoose.Types.ObjectId(), user: req.user._id, text,
+    parent: parent || null, date: new Date()
+  };
+  const filter = { _id: req.params.postid };
+  // Check the parent on the same post in the atomic update. Replies stay one level deep.
+  if (parent) filter.comments = { $elemMatch: { _id: parent, parent: null } };
+  const post = await postModel.findOneAndUpdate(filter, { $push: { comments: comment } },
+    { new: true, runValidators: true, projection: { _id: 1 } });
+  if (!post) {
+    if (!await postModel.exists({ _id: req.params.postid })) throw createError(404, 'Post not found');
+    throw createError(404, 'Comment not found. Reply to a top-level comment on this post');
+  }
+  res.status(201).json({ comment: {
+    ...comment,
+    user: { _id: req.user._id, username: req.user.username, picture: req.user.picture }
+  } });
 }));
 
 router.get("/feed", isLoggedIn, asyncRoute(async function (req, res) {

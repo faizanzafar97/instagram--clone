@@ -209,6 +209,63 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     assert.deepEqual(Object.keys(users[0]).sort(), ['_id', 'name', 'picture', 'username']);
   });
 
+  await t.test('comments and replies persist, validate their parent, and expose only public authors', async function () {
+    const owner = await User.findOne({ username: 'page_tester' });
+    const other = await User.findOne({ username: 'other_user' });
+    const post = await Post.findOne({ user: other._id });
+    const ownPost = await Post.findOne({ user: owner._id });
+    const url = '/posts/' + post.id + '/comments';
+    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    const submit = (values, pathname = url) => request(pathname, {
+      method: 'POST', headers, body: JSON.stringify(values)
+    });
+    assert.deepEqual(JSON.parse((await request(url)).body), { comments: [] });
+    for (const method of ['GET', 'POST']) {
+      const response = await request(url, {
+        method, headers: { ...headers, cookie: '' },
+        ...(method === 'POST' ? { body: JSON.stringify({ text: 'Anonymous' }) } : {})
+      });
+      assert.equal(response.status, 401);
+    }
+    for (const text of [undefined, '', '   ', 'x'.repeat(1001), {}, ['bad']]) {
+      assert.equal((await submit({ text })).status, 400);
+    }
+    const payload = '<img src=x onerror="window.unexpectedComment=true">';
+    const created = await submit({ text: '  ' + payload + '  ', user: other.id });
+    assert.equal(created.status, 201);
+    const comment = JSON.parse(created.body).comment;
+    assert.equal(comment.text, payload);
+    assert.equal(comment.user._id, owner.id, 'author always comes from the session');
+    assert.equal(comment.parent, null);
+    assert.deepEqual(Object.keys(comment.user).sort(), ['_id', 'picture', 'username']);
+    const reply = await submit({ text: 'A reply', parent: comment._id });
+    assert.equal(reply.status, 201);
+    const replyComment = JSON.parse(reply.body).comment;
+    assert.equal(replyComment.parent, comment._id);
+    assert.equal((await submit({ text: 'Nested reply', parent: replyComment._id })).status, 404);
+    assert.equal((await submit({ text: 'Wrong post', parent: comment._id }, '/posts/' + ownPost.id + '/comments')).status, 404);
+    assert.equal((await submit({ text: 'Missing parent', parent: new mongoose.Types.ObjectId().toString() })).status, 404);
+    for (const parent of ['invalid', '', {}, []]) {
+      assert.equal((await submit({ text: 'Bad parent', parent })).status, 400);
+    }
+    for (const [id, expected] of [['invalid', 400], [new mongoose.Types.ObjectId(), 404]]) {
+      const missingUrl = '/posts/' + id + '/comments';
+      assert.equal((await request(missingUrl)).status, expected);
+      assert.equal((await submit({ text: 'Missing post' }, missingUrl)).status, expected);
+    }
+    const concurrent = await Promise.all([submit({ text: 'First simultaneous comment' }), submit({ text: 'Second simultaneous comment' })]);
+    assert.ok(concurrent.every(response => response.status === 201));
+    const loaded = JSON.parse((await request(url)).body).comments;
+    assert.equal(loaded.length, 4);
+    assert.equal(loaded[0].text, payload);
+    assert.equal(loaded[1].parent, comment._id);
+    assert.deepEqual(Object.keys(loaded[0].user).sort(), ['_id', 'picture', 'username']);
+    assert.equal((await Post.findById(post._id)).comments.length, 4);
+    const feed = await request('/feed');
+    assert.equal(feed.status, 200);
+    assert.match(feed.body, /class="commentcount">4<\/span>/);
+  });
+
   await t.test('profile validation rejects invalid and duplicate usernames without breaking the session', async function () {
     for (const username of ['', '  ', '../invalid', 'other_user']) {
       const response = await form('/update', { username, name: 'Name', bio: 'Bio' });
