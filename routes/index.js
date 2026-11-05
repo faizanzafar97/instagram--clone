@@ -62,6 +62,32 @@ router.get('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (req
   res.json({ comments: post.comments });
 }));
 
+async function missingOwnedPost(postid) {
+  if (!await postModel.exists({ _id: postid })) throw createError(404, 'Post not found');
+  throw createError(403, 'You can only edit or delete your own posts');
+}
+
+router.patch('/posts/:postid', isLoggedIn, asyncRoute(async function (req, res) {
+  if (typeof req.body.caption !== 'string') throw createError(400, 'Caption must be text');
+  const caption = textFrom(req.body.caption, 'Caption', 2200);
+  const post = await postModel.findOneAndUpdate(
+    { _id: req.params.postid, user: req.user._id }, { $set: { caption } },
+    { new: true, runValidators: true, projection: { caption: 1 } });
+  if (!post) await missingOwnedPost(req.params.postid);
+  res.json({ _id: post.id, caption: post.caption });
+}));
+
+router.delete('/posts/:postid', isLoggedIn, asyncRoute(async function (req, res) {
+  const post = await postModel.findOneAndDelete({ _id: req.params.postid, user: req.user._id });
+  if (!post) await missingOwnedPost(req.params.postid);
+  await userModel.updateMany(
+    { $or: [{ posts: post._id }, { saved: post._id }] },
+    { $pull: { posts: post._id, saved: post._id } });
+  try { await upload.removePostImage(post.picture); }
+  catch (err) { console.error('Could not remove deleted post image:', err.message); }
+  res.json({ _id: post.id });
+}));
+
 router.post('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (req, res) {
   const text = textFrom(req.body.text, 'Comment', 1000);
   if (!text) throw createError(400, 'Write a comment before posting');

@@ -266,6 +266,68 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     assert.match(feed.body, /class="commentcount">4<\/span>/);
   });
 
+  await t.test('only post owners can edit captions or delete posts, images and saved references', async function () {
+    const owner = await User.findOne({ username: 'page_tester' });
+    const other = await User.findOne({ username: 'other_user' });
+    const post = await Post.findOne({ user: owner._id });
+    const otherPost = await Post.findOne({ user: other._id });
+    const url = '/posts/' + post.id;
+    const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
+    const edit = (values, pathname = url) => request(pathname, { method: 'PATCH', headers, body: JSON.stringify(values) });
+    for (const method of ['PATCH', 'DELETE']) {
+      assert.equal((await request(url, {
+        method, headers: { ...headers, cookie: '' },
+        ...(method === 'PATCH' ? { body: JSON.stringify({ caption: 'Anonymous edit' }) } : {})
+      })).status, 401);
+      const forbidden = await request('/posts/' + otherPost.id, {
+        method, headers, ...(method === 'PATCH' ? { body: JSON.stringify({ caption: 'Stolen post', user: owner.id }) } : {})
+      });
+      assert.equal(forbidden.status, 403);
+      for (const [id, expected] of [['invalid', 400], [new mongoose.Types.ObjectId(), 404]]) {
+        assert.equal((await request('/posts/' + id, {
+          method, headers, ...(method === 'PATCH' ? { body: JSON.stringify({ caption: 'Missing post' }) } : {})
+        })).status, expected);
+      }
+    }
+    assert.equal((await Post.findById(otherPost._id)).caption, otherPost.caption);
+    for (const caption of [undefined, null, {}, [], 'x'.repeat(2201)]) {
+      assert.equal((await edit({ caption })).status, 400);
+    }
+    const caption = '<img src=x onerror="window.badCaption=true">\nUpdated caption';
+    const edited = await edit({ caption: '  ' + caption + '  ', user: other.id, picture: 'changed.png' });
+    assert.equal(edited.status, 200);
+    assert.equal(JSON.parse(edited.body).caption, caption);
+    const stored = await Post.findById(post._id);
+    assert.equal(stored.caption, caption);
+    assert.equal(stored.picture, post.picture);
+    assert.equal(String(stored.user), owner.id);
+    assert.equal(stored.date.toISOString(), post.date.toISOString());
+    const feed = await request('/feed');
+    assert.match(feed.body, /&lt;img src=x/);
+    assert.doesNotMatch(feed.body, /<img src=x/);
+    assert.equal((feed.body.match(/class="editpost text-blue-500"/g) || []).length, 1);
+    assert.equal((await edit({ caption: '' })).status, 200, 'captions can be cleared');
+    await User.updateMany({ _id: { $in: [owner._id, other._id] } }, { $addToSet: { saved: post._id } });
+    const comment = await request(url + '/comments', {
+      method: 'POST', headers, body: JSON.stringify({ text: 'Removed with the post' })
+    });
+    assert.equal(comment.status, 201);
+    const deleted = await request(url, { method: 'DELETE', headers });
+    assert.equal(deleted.status, 200);
+    assert.equal(await Post.findById(post._id), null);
+    await assert.rejects(fs.access(path.join(__dirname, '../public/images/uploads', post.picture)), { code: 'ENOENT' });
+    uploadedFiles.splice(uploadedFiles.indexOf(post.picture), 1);
+    for (const id of [owner._id, other._id]) {
+      const user = await User.findById(id);
+      assert.equal(user.posts.includes(post._id), false);
+      assert.equal(user.saved.includes(post._id), false);
+    }
+    assert.equal((await request(url + '/comments')).status, 404);
+    assert.equal((await request(url, { method: 'DELETE', headers })).status, 404);
+    assert.doesNotMatch((await request('/profile')).body, new RegExp(post.picture));
+    assert.equal((await request('/images/uploads/default-avatar.svg')).status, 200);
+  });
+
   await t.test('profile validation rejects invalid and duplicate usernames without breaking the session', async function () {
     for (const username of ['', '  ', '../invalid', 'other_user']) {
       const response = await form('/update', { username, name: 'Name', bio: 'Bio' });

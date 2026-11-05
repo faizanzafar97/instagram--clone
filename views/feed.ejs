@@ -34,13 +34,13 @@
     <p id="feederror" role="alert" class="px-4 text-red-500" hidden></p>
     <div data-userid="<%= user.id %>" class="posts parent mb-20">
       <% if (posts.length === 0) { %>
-        <div class="px-4 py-10 text-center">
+        <div class="feedempty px-4 py-10 text-center">
           <p>No posts yet.</p>
           <a class="text-blue-500" href="/upload">Share your first photo</a>
         </div>
       <% } %>
       <% posts.forEach(function(post){ %>
-        <div data-postid="<%= post.id %>" class="post mt-10 w-full min-h-[50vh]">
+        <div id="post-<%= post.id %>" data-postid="<%= post.id %>" class="post mt-10 w-full min-h-[50vh]">
           <div class="title px-4 flex items-center gap-2">
             <div class="w-[9vw] h-[9vw] bg-sky-100 rounded-full overflow-hidden">
               <img class="w-full h-full object-cover" src="/images/uploads/<%= post.user.picture %>" alt="">
@@ -51,7 +51,31 @@
             <h6 class="text-xs opacity-30">
               <%= dater(new Date(post.date)) %>
             </h6>
+            <% if (String(post.user._id) === String(user._id)) { %>
+              <div class="post-actions ml-auto flex gap-3 text-sm">
+                <button type="button" class="editpost text-blue-500" aria-expanded="false" aria-controls="edit-post-<%= post.id %>">Edit caption</button>
+                <button type="button" class="deletepost text-red-500" aria-expanded="false" aria-controls="delete-post-<%= post.id %>">Delete</button>
+              </div>
+            <% } %>
           </div>
+          <% if (String(post.user._id) === String(user._id)) { %>
+            <form id="edit-post-<%= post.id %>" class="editpostform px-4 mt-3" hidden>
+              <label class="block text-sm mb-2" for="caption-<%= post.id %>">Edit caption</label>
+              <textarea id="caption-<%= post.id %>" name="caption" maxlength="2200" rows="3" class="w-full rounded bg-zinc-800 p-2"><%= post.caption || '' %></textarea>
+              <div class="flex gap-3 mt-2 text-sm">
+                <button type="submit" class="text-blue-500">Save caption</button>
+                <button type="button" class="cancelpostedit">Cancel</button>
+              </div>
+            </form>
+            <div id="delete-post-<%= post.id %>" class="deletepostconfirm px-4 mt-3 text-sm" hidden>
+              <p>Delete this post? Its photo, likes, comments, and replies will be removed permanently.</p>
+              <div class="flex gap-3 mt-2">
+                <button type="button" class="confirmdeletepost text-red-500">Delete post</button>
+                <button type="button" class="cancelpostdelete">Cancel</button>
+              </div>
+            </div>
+            <p class="post-action-error px-4 mt-2 text-sm text-red-500" role="alert" hidden></p>
+          <% } %>
           <div class="relative w-full h-96 mt-4 bg-sky-100 overflow-hidden">
             <img data-postid="<%= post.id %>" class="postimg w-full h-full object-cover"
               src="/images/uploads/<%= post.picture %>" alt="">
@@ -79,7 +103,7 @@
             <span class="font-semibold pl-4 pr-2">
               <%= post.user.username %>
             </span>
-            <%= post.caption %>
+            <span class="post-caption whitespace-pre-wrap break-words"><%= post.caption %></span>
           </h2>
           <div class="px-4 mt-3 text-sm">
             <button type="button" class="commenttoggle text-zinc-400" aria-expanded="false" aria-controls="comments-<%= post.id %>"><span class="commentcount"><%= post.comments.length %></span> comments</button>
@@ -108,5 +132,6 @@
 
   <script src="/javascripts/feed.js" defer></script>
   <script src="/javascripts/comments.js" defer></script>
+  <script src="/javascripts/post-actions.js" defer></script>
 
 <% include ./partials/footer.ejs %>
