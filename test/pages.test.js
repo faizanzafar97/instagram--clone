@@ -14,6 +14,7 @@ const mongoose = require('mongoose');
 const User = require('../routes/users');
 const Post = require('../routes/posts');
 const Story = require('../routes/story');
+const Notification = require('../routes/notifications');
 
 test('pages, authentication, and route failures', { timeout: 30000 }, async function (t) {
   let server;
@@ -46,6 +47,7 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
       status: response.status,
       location: response.headers.get('location'),
       contentType: response.headers.get('content-type'),
+      cacheControl: response.headers.get('cache-control'),
       body: await response.text(),
     };
   }
@@ -58,7 +60,7 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     for (const url of ['/', '/login', '/stylesheets/style.css', '/images/uploads/default-avatar.svg']) {
       assert.equal((await request(url)).status, 200, url);
     }
-    for (const url of ['/feed', '/profile', '/search', '/edit', '/upload', '/like/invalid']) {
+    for (const url of ['/feed', '/profile', '/search', '/edit', '/upload', '/like/invalid', '/notifications']) {
       const response = await request(url);
       assert.equal(response.status, 302, url);
       assert.equal(response.location, '/login', url);
@@ -119,12 +121,14 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     ]);
     const story = await Story.create({ user: author._id, story: 'default-avatar.svg' });
     await Story.create({ user: missingAuthor, story: 'default-avatar.svg' });
+    await request('/follow/' + author.id);
     const response = await request('/feed');
     assert.equal(response.status, 200);
     assert.match(response.body, /Visible test post/);
     assert.doesNotMatch(response.body, /Deleted author/);
     assert.equal((await request('/story/' + story.id)).status, 200);
     assert.equal((await request('/profile/other_user')).status, 200);
+    await request('/follow/' + author.id);
   });
 
   await t.test('image uploads create posts and stories that load in the feed', async function () {
@@ -162,6 +166,47 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     assert.deepEqual(Buffer.from(await avatar.arrayBuffer()), image);
     assert.equal((await request('/feed')).status, 200);
     assert.match((await request('/story')).location, /^\/story\//);
+  });
+
+  await t.test('registering and logging in to another account does not inherit the previous account posts', async function () {
+    const originalUser = await User.findOne({ username: 'page_tester' });
+    const originalPost = await Post.findOne({ user: originalUser._id });
+    assert.ok((await request('/feed')).body.includes('data-postid="' + originalPost.id + '"'));
+    const registered = await form('/register', { username: 'fresh_account', password: 'fresh-account-password', name: 'Fresh Account' });
+    assert.equal(registered.location, '/profile');
+    const freshUser = await User.findOne({ username: 'fresh_account' });
+    let feed = await request('/feed');
+    assert.equal(feed.cacheControl, 'no-store');
+    assert.ok(feed.body.includes('data-userid="' + freshUser.id + '"'));
+    assert.match(feed.body, /No posts yet\./);
+    assert.doesNotMatch(feed.body, /class="postimg/);
+    let profile = await request('/profile');
+    assert.match(profile.body, /Fresh Account/);
+    assert.match(profile.body, /no posts yet\./);
+    assert.equal(profile.cacheControl, 'no-store');
+    assert.ok(!profile.body.includes(originalPost.picture));
+    await request('/logout');
+    assert.equal((await form('/login', { username: 'fresh_account', password: 'fresh-account-password' })).location, '/feed');
+    assert.match((await request('/feed')).body, /No posts yet\./);
+    const freshPost = await Post.create({ user: freshUser._id, caption: 'Fresh account photo', picture: 'default-avatar.svg' });
+    await User.updateOne({ _id: freshUser._id }, { $addToSet: { posts: freshPost._id } });
+    feed = await request('/feed');
+    assert.match(feed.body, /Fresh account photo/);
+    assert.ok(!feed.body.includes('data-postid="' + originalPost.id + '"'));
+    await request('/follow/' + originalUser.id);
+    feed = await request('/feed');
+    assert.ok(feed.body.includes('data-postid="' + originalPost.id + '"'), 'following an account adds its posts');
+    assert.match(feed.body, /Fresh account photo/);
+    profile = await request('/profile');
+    assert.ok(!profile.body.includes(originalPost.picture), 'following does not add posts to your profile');
+    await request('/follow/' + originalUser.id);
+    assert.ok(!(await request('/feed')).body.includes('data-postid="' + originalPost.id + '"'), 'unfollowing removes its posts');
+    await form('/login', { username: 'page_tester', password: 'test-password' });
+    feed = await request('/feed');
+    assert.ok(feed.body.includes('data-postid="' + originalPost.id + '"'));
+    assert.doesNotMatch(feed.body, /Fresh account photo/);
+    assert.ok((await request('/profile')).body.includes(originalPost.picture));
+    assert.equal((await Post.findById(originalPost._id)).user.toString(), originalUser.id);
   });
 
   await t.test('query rejections reach the error page and the server stays available', async function () {
@@ -261,9 +306,76 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     assert.equal(loaded[1].parent, comment._id);
     assert.deepEqual(Object.keys(loaded[0].user).sort(), ['_id', 'picture', 'username']);
     assert.equal((await Post.findById(post._id)).comments.length, 4);
+    await request('/follow/' + other.id);
     const feed = await request('/feed');
     assert.equal(feed.status, 200);
     assert.match(feed.body, /class="commentcount">4<\/span>/);
+    await request('/follow/' + other.id);
+  });
+
+  await t.test('notifications are private, persist read status, and track likes, comments and follows', async function () {
+    const actor = await User.findOne({ username: 'page_tester' });
+    const recipient = await User.findOne({ username: 'other_user' });
+    const post = await Post.findOne({ user: recipient._id });
+    const ownPost = await Post.findOne({ user: actor._id });
+    await Notification.deleteMany({});
+    await recipient.setPassword('notification-test-password');
+    await recipient.save();
+    const headers = { Accept: 'application/json' };
+    const count = async () => JSON.parse((await request('/notifications/unread-count', { headers })).body).unreadCount;
+    for (const [url, method] of [['/notifications/unread-count', 'GET'], ['/notifications/read', 'POST'], ['/notifications/' + new mongoose.Types.ObjectId() + '/read', 'POST']]) {
+      assert.equal((await request(url, { method, headers: { ...headers, cookie: '' } })).status, 401);
+    }
+    const empty = await request('/notifications');
+    assert.equal(empty.status, 200);
+    assert.match(empty.body, /No notifications yet/);
+    await request('/like/' + ownPost.id);
+    await form('/posts/' + ownPost.id + '/comments', { text: 'My own post' });
+    assert.equal(await Notification.countDocuments(), 0, 'self actions do not notify');
+    await request('/like/' + ownPost.id);
+    await request('/like/' + post.id);
+    await request('/follow/' + recipient.id);
+    const text = '<img src=x onerror="window.badNotification=true">';
+    await form('/posts/' + post.id + '/comments', { text });
+    const notifications = await Notification.find({ recipient: recipient._id });
+    assert.equal(notifications.length, 3);
+    assert.deepEqual(notifications.map(item => item.type).sort(), ['comment', 'follow', 'like']);
+    assert.equal(await count(), 0, 'actor cannot see the recipient unread count');
+    assert.doesNotMatch((await request('/notifications')).body, /notification-item border/);
+    const target = notifications.find(item => item.type === 'like');
+    assert.equal((await request('/notifications/' + target.id + '/read', { method: 'POST', headers })).status, 404);
+    await request('/notifications/read', { method: 'POST', headers });
+    assert.equal(await Notification.countDocuments({ recipient: recipient._id, read: false }), 3, 'mark all is scoped to the session');
+    await form('/login', { username: recipient.username, password: 'notification-test-password' });
+    assert.equal(await count(), 3);
+    const page = await request('/notifications');
+    assert.equal(page.status, 200);
+    assert.match(page.body, /page_tester/);
+    assert.match(page.body, /liked your post/);
+    assert.match(page.body, /commented on your post/);
+    assert.match(page.body, /started following you/);
+    assert.match(page.body, /&lt;img src=x/);
+    assert.doesNotMatch(page.body, /<img src=x/);
+    assert.ok(page.body.includes('/feed#post-' + post.id));
+    assert.ok(page.body.includes('/profile/page_tester'));
+    assert.equal((await request('/notifications/' + target.id + '/read', { method: 'POST', headers })).status, 200);
+    assert.equal(await count(), 2);
+    assert.equal((await request('/notifications/' + target.id + '/read', { method: 'POST', headers })).status, 200);
+    assert.equal(await count(), 2, 'marking one notification read is idempotent');
+    assert.equal((await request('/notifications/invalid/read', { method: 'POST', headers })).status, 400);
+    const marked = await request('/notifications/read', { method: 'POST', headers });
+    assert.equal(JSON.parse(marked.body).unreadCount, 0);
+    assert.equal(await count(), 0);
+    assert.equal(await Notification.countDocuments({ recipient: recipient._id, read: true }), 3);
+    await form('/login', { username: actor.username, password: 'test-password' });
+    await request('/like/' + post.id);
+    await request('/follow/' + recipient.id);
+    assert.equal(await Notification.countDocuments({ type: { $in: ['like', 'follow'] } }), 0, 'undoing actions removes their notifications');
+    await request('/like/' + post.id);
+    await request('/follow/' + recipient.id);
+    assert.equal(await Notification.countDocuments({ recipient: recipient._id, read: false }), 2, 'new actions create new unread notifications');
+    await request('/like/' + post.id);
+    await request('/follow/' + recipient.id);
   });
 
   await t.test('only post owners can edit captions or delete posts, images and saved references', async function () {
@@ -312,9 +424,11 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
       method: 'POST', headers, body: JSON.stringify({ text: 'Removed with the post' })
     });
     assert.equal(comment.status, 201);
+    await Notification.create({ recipient: other._id, actor: owner._id, type: 'like', post: post._id });
     const deleted = await request(url, { method: 'DELETE', headers });
     assert.equal(deleted.status, 200);
     assert.equal(await Post.findById(post._id), null);
+    assert.equal(await Notification.countDocuments({ post: post._id }), 0);
     await assert.rejects(fs.access(path.join(__dirname, '../public/images/uploads', post.picture)), { code: 'ENOENT' });
     uploadedFiles.splice(uploadedFiles.indexOf(post.picture), 1);
     for (const id of [owner._id, other._id]) {

@@ -6,6 +6,7 @@ const localStrategy = require("passport-local");
 const userModel = require("./users");
 const postModel = require("./posts");
 const storyModel = require("./story");
+const notificationModel = require('./notifications');
 const mongoose = require('mongoose');
 passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
@@ -37,6 +38,45 @@ function textFrom(value, field, maxLength) {
   return value.trim();
 }
 
+async function notify(recipient, actor, type, post = null, comment = null, text = '') {
+  if (!recipient || String(recipient) === String(actor)) return;
+  const key = { recipient, actor, type, post, comment };
+  try {
+    await notificationModel.updateOne(key, { $setOnInsert: { ...key, text, read: false, date: new Date() } },
+      { upsert: true, runValidators: true });
+  } catch (err) {
+    // Concurrent copies of the same event must not produce duplicate notifications.
+    if (err.code !== 11000) throw err;
+  }
+}
+
+router.get('/notifications', isLoggedIn, asyncRoute(async function (req, res) {
+  const notifications = await notificationModel.find({ recipient: req.user._id })
+    .sort({ date: -1, _id: -1 }).limit(50)
+    .populate('actor', 'username picture').populate('post', 'picture');
+  res.set('Cache-Control', 'no-store');
+  res.render('notifications', { footer: true, user: req.user, notifications, dater: utils.formatRelativeTime });
+}));
+
+router.get('/notifications/unread-count', isLoggedIn, asyncRoute(async function (req, res) {
+  const unreadCount = await notificationModel.countDocuments({ recipient: req.user._id, read: false });
+  res.set('Cache-Control', 'no-store');
+  res.json({ unreadCount });
+}));
+
+router.post('/notifications/read', isLoggedIn, asyncRoute(async function (req, res) {
+  await notificationModel.updateMany({ recipient: req.user._id, read: false }, { $set: { read: true } });
+  if (req.accepts(['html', 'json']) !== 'json') return res.redirect('/notifications');
+  res.json({ unreadCount: await notificationModel.countDocuments({ recipient: req.user._id, read: false }) });
+}));
+
+router.post('/notifications/:notificationid/read', isLoggedIn, asyncRoute(async function (req, res) {
+  const notification = await notificationModel.findOneAndUpdate(
+    { _id: req.params.notificationid, recipient: req.user._id }, { $set: { read: true } });
+  if (!notification) throw createError(404, 'Notification not found');
+  res.json({ _id: notification.id });
+}));
+
 router.get("/", function (req, res) {
   res.render("index", { footer: false });
 });
@@ -52,6 +92,8 @@ router.get("/like/:postid", isLoggedIn, asyncRoute(async function (req, res) {
   const update = index === -1 ? { $addToSet: { like: req.user._id } } : { $pull: { like: req.user._id } };
   const updated = await postModel.findByIdAndUpdate(post._id, update, { new: true });
   if (!updated) throw createError(404, 'Post not found');
+  if (index === -1) await notify(post.user, req.user._id, 'like', post._id);
+  else await notificationModel.deleteMany({ actor: req.user._id, type: 'like', post: post._id });
   res.json({ _id: updated.id, like: updated.like });
 }));
 
@@ -83,6 +125,7 @@ router.delete('/posts/:postid', isLoggedIn, asyncRoute(async function (req, res)
   await userModel.updateMany(
     { $or: [{ posts: post._id }, { saved: post._id }] },
     { $pull: { posts: post._id, saved: post._id } });
+  await notificationModel.deleteMany({ post: post._id });
   try { await upload.removePostImage(post.picture); }
   catch (err) { console.error('Could not remove deleted post image:', err.message); }
   res.json({ _id: post.id });
@@ -104,11 +147,12 @@ router.post('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (re
   // Check the parent on the same post in the atomic update. Replies stay one level deep.
   if (parent) filter.comments = { $elemMatch: { _id: parent, parent: null } };
   const post = await postModel.findOneAndUpdate(filter, { $push: { comments: comment } },
-    { new: true, runValidators: true, projection: { _id: 1 } });
+    { new: true, runValidators: true, projection: { _id: 1, user: 1 } });
   if (!post) {
     if (!await postModel.exists({ _id: req.params.postid })) throw createError(404, 'Post not found');
     throw createError(404, 'Comment not found. Reply to a top-level comment on this post');
   }
+  await notify(post.user, req.user._id, 'comment', post._id, comment._id, text);
   res.status(201).json({ comment: {
     ...comment,
     user: { _id: req.user._id, username: req.user.username, picture: req.user.picture }
@@ -124,7 +168,8 @@ router.get("/feed", isLoggedIn, asyncRoute(async function (req, res) {
     seen.add(story.user.id);
     return true;
   });
-  const posts = await postModel.find().sort({ date: -1, _id: -1 }).populate("user");
+  const posts = await postModel.find({ user: { $in: [user._id, ...user.following] } })
+    .sort({ date: -1, _id: -1 }).populate("user");
   res.render("feed", {
     footer: true,
     user,
@@ -159,6 +204,8 @@ router.get("/follow/:userid", isLoggedIn, asyncRoute(async function (req, res) {
   const operation = index === -1 ? '$addToSet' : '$pull';
   await userModel.updateOne({ _id: target._id }, { [operation]: { followers: user._id } });
   await userModel.updateOne({ _id: user._id }, { [operation]: { following: target._id } });
+  if (index === -1) await notify(target._id, user._id, 'follow');
+  else await notificationModel.deleteMany({ recipient: target._id, actor: user._id, type: 'follow' });
   res.redirect('/profile/' + encodeURIComponent(target.username));
 }));
 
@@ -274,6 +321,8 @@ router.get("/logout", function (req, res, next) {
 });
 
 function isLoggedIn(req, res, next) {
+  // Account-specific pages must be fetched again after switching users.
+  res.set('Cache-Control', 'no-store');
   if (req.isAuthenticated()) return next();
   if (req.accepts(['html', 'json']) === 'json') {
     return res.status(401).json({ message: 'Please log in to continue', loginUrl: '/login' });

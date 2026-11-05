@@ -1,0 +1,40 @@
+<% include ./partials/header.ejs %>
+<main class="min-h-screen bg-zinc-900 text-white px-4 pt-5 pb-24">
+  <div class="flex items-center justify-between gap-4 mb-3">
+    <h1 class="text-xl font-semibold">Notifications</h1>
+    <form class="mark-notifications-read" action="/notifications/read" method="post">
+      <button class="text-sm text-blue-500" type="submit">Mark all as read</button>
+    </form>
+  </div>
+  <p class="text-sm text-zinc-400 mb-5">Your latest 50 notifications</p>
+  <p class="notifications-error text-red-500 mb-3" role="alert" hidden></p>
+  <p class="notifications-status text-zinc-400 mb-3" role="status"></p>
+  <% if (!notifications.length) { %>
+    <p class="notifications-empty py-10 text-center text-zinc-400">No notifications yet. New likes, comments, and followers will appear here.</p>
+  <% } %>
+  <div class="notification-list">
+    <% notifications.forEach(function(notification) { %>
+      <article class="notification-item border-b border-zinc-800 py-4" data-notificationid="<%= notification.id %>" data-read="<%= notification.read %>">
+        <% const destination = notification.type === 'follow'
+          ? (notification.actor ? '/profile/' + encodeURIComponent(notification.actor.username) : '/notifications')
+          : (notification.post ? '/feed#post-' + notification.post.id : '/notifications'); %>
+        <a class="notification-open flex items-start gap-3" href="<%= destination %>">
+          <img class="w-10 h-10 rounded-full object-cover" src="/images/uploads/<%= notification.actor ? notification.actor.picture : 'default-avatar.svg' %>" alt="">
+          <div class="flex-1 min-w-0">
+            <p><strong><%= notification.actor ? notification.actor.username : 'Deleted user' %></strong>
+              <% if (notification.type === 'like') { %> liked your post.<% } %>
+              <% if (notification.type === 'comment') { %> commented on your post.<% } %>
+              <% if (notification.type === 'follow') { %> started following you.<% } %>
+              <span class="notification-unread text-xs text-blue-500" <%= notification.read ? 'hidden' : '' %>>New</span>
+            </p>
+            <% if (notification.type === 'comment') { %><p class="text-sm text-zinc-400 whitespace-pre-wrap break-words"><%= notification.text %></p><% } %>
+            <% if (notification.type !== 'follow' && !notification.post) { %><p class="text-sm text-zinc-400">This post is no longer available.</p><% } %>
+            <time class="text-xs text-zinc-400" datetime="<%= notification.date.toISOString() %>"><%= dater(notification.date) %> ago</time>
+          </div>
+          <% if (notification.post) { %><img class="w-12 h-12 object-cover rounded" src="/images/uploads/<%= notification.post.picture %>" alt="Post photo"><% } %>
+        </a>
+      </article>
+    <% }) %>
+  </div>
+</main>
+<% include ./partials/footer.ejs %>

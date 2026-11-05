@@ -26,7 +26,7 @@ test('all application JavaScript and EJS templates compile', function () {
   for (const file of files.filter(file => file.endsWith('.ejs') && !file.includes(path.sep + 'partials' + path.sep))) {
     const user = { id: 'test', username: 'test', posts: [], followers: [], following: [], saved: [], picture: 'default-avatar.svg' };
     const html = ejs.render(fs.readFileSync(file, 'utf8'), {
-      footer: true, user, userprofile: user, posts: [], stories: [], dater: formatRelativeTime,
+      footer: true, user, userprofile: user, posts: [], stories: [], notifications: [], dater: formatRelativeTime,
       story: { user, story: 'default-avatar.svg' }, message: 'Example error', error: { status: 404 },
     }, { filename: file });
     for (const [, script] of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {

@@ -3,7 +3,7 @@
     <div class="w-full px-4 flex items-center justify-between">
       <img class="w-1/4" src="/images/logo.png" alt="">
       <div class="icons -mt-2 flex gap-5 items-center">
-        <i class="text-[1.4rem] ri-heart-3-line"></i>
+        <a href="/notifications" class="notification-link relative" aria-label="Notifications"><i class="text-[1.4rem] ri-heart-3-line"></i><span class="notification-badge text-xs bg-red-500 rounded-full px-1" hidden></span></a>
         <i class="text-[1.4rem] ri-messenger-line"></i>
       </div>
     </div>
@@ -36,6 +36,7 @@
       <% if (posts.length === 0) { %>
         <div class="feedempty px-4 py-10 text-center">
           <p>No posts yet.</p>
+          <p class="text-sm text-zinc-400 mt-2">Your posts and posts from people you follow appear here.</p>
           <a class="text-blue-500" href="/upload">Share your first photo</a>
         </div>
       <% } %>

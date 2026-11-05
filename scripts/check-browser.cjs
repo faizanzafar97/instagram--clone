@@ -110,6 +110,55 @@ async function browserScenario(imageBase64) {
     check(!frame.contentDocument.querySelector('.post-caption img') && !frame.contentWindow.badCaption, 'Caption updates safely without reloading');
     await navigate('/feed');
     check(frame.contentDocument.querySelector('.post-caption').textContent === captionText, 'Edited caption survives reload');
+    const postId = frame.contentDocument.querySelector('.post').dataset.postid;
+    const ownerId = frame.contentDocument.querySelector('.posts.parent').dataset.userid;
+    async function login(username, password) {
+      const response = await fetch('/login', { method: 'POST', body: new URLSearchParams({ username, password }) });
+      check(response.ok && new URL(response.url).pathname === '/feed', 'Notification test login: ' + username);
+    }
+    const newAccount = await fetch('/register', {
+      method: 'POST', body: new URLSearchParams({ username: 'browser_new_account', password: 'new-account-password', name: 'New Account' })
+    });
+    check(newAccount.ok, 'A second account can be created in the same browser');
+    await navigate('/profile');
+    check(frame.contentDocument.querySelector('.nav h3').textContent === 'browser_new_account' &&
+      !frame.contentDocument.querySelector('.post'), 'New account profile has its own identity and no inherited posts');
+    await navigate('/feed');
+    check(!frame.contentDocument.querySelector('.post'), 'New account does not see the previous account posts in its feed');
+    await navigate('/logout');
+    await login('browser_new_account', 'new-account-password');
+    await navigate('/feed');
+    check(!frame.contentDocument.querySelector('.post'), 'Logging in again keeps the new account feed empty');
+    await login('browser_tester', 'browser-test-password');
+    await navigate('/feed');
+    check(frame.contentDocument.querySelector('.post').dataset.postid === postId, 'Switching back restores the original account own post');
+    await login('browser_friend', 'browser-friend-password');
+    await fetch('/like/' + postId);
+    const notificationText = '<img src=x onerror="window.badNotification=true">';
+    await fetch('/posts/' + postId + '/comments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: notificationText })
+    });
+    await fetch('/follow/' + ownerId);
+    await login('browser_tester', 'browser-test-password');
+    await navigate('/notifications');
+    await waitFor(() => frame.contentDocument.querySelector('.notification-badge').textContent === '3');
+    check(frame.contentDocument.querySelectorAll('.notification-item').length === 3, 'Likes, comments and follows appear in notifications');
+    check(frame.contentDocument.querySelector('.notification-list').textContent.includes(notificationText) &&
+      !frame.contentDocument.querySelector('.notification-item p img') && !frame.contentWindow.badNotification, 'Notifications escape comment text');
+    const likeNotification = Array.from(frame.contentDocument.querySelectorAll('.notification-open'))
+      .find(link => link.textContent.includes('liked your post'));
+    await new Promise(resolve => { frame.onload = resolve; likeNotification.click(); });
+    check(frame.contentWindow.location.hash === '#post-' + postId, 'Opening a notification navigates to its post');
+    await waitFor(() => frame.contentDocument.querySelector('.notification-badge').textContent === '2');
+    check(true, 'Opening a notification marks only that notification read');
+    await navigate('/notifications');
+    frame.contentDocument.querySelector('.mark-notifications-read').requestSubmit();
+    await waitFor(() => frame.contentDocument.querySelector('.notifications-status').textContent.includes('All notifications marked'));
+    check(Array.from(frame.contentDocument.querySelectorAll('.notification-unread')).every(item => item.hidden) &&
+      frame.contentDocument.querySelector('.notification-badge').hidden, 'Mark all as read clears new indicators and the badge');
+    await navigate('/notifications');
+    check(Array.from(frame.contentDocument.querySelectorAll('.notification-item')).every(item => item.dataset.read === 'true'), 'Notification read status survives reload');
+    await navigate('/feed');
     frame.contentDocument.querySelector('.deletepost').click();
     check(!frame.contentDocument.querySelector('.deletepostconfirm').hidden, 'Delete asks for confirmation');
     frame.contentDocument.querySelector('.cancelpostdelete').click();
@@ -141,6 +190,10 @@ async function browserScenario(imageBase64) {
       frame.contentDocument.querySelector('a[href^="/follow/"]').click();
     });
     check(frame.contentDocument.querySelector('a[href^="/follow/"]').textContent === 'Following', 'Follow button updates profile');
+    await login('browser_friend', 'browser-friend-password');
+    await navigate('/notifications');
+    check(frame.contentDocument.querySelectorAll('.notification-item').length === 1 &&
+      frame.contentDocument.querySelector('.notification-list').textContent.includes('browser_tester'), 'Notifications belong to the signed-in recipient');
     await navigate('/logout');
     check(frame.contentWindow.location.pathname === '/login', 'Logout returns to login');
     await fetch('/__browser-check-result', { method: 'POST', body: JSON.stringify({ ok: true, checks }) });
@@ -161,7 +214,7 @@ async function browserScenario(imageBase64) {
   let server, browser, temporaryDirectory, timer;
   try {
     await app.locals.databaseReady;
-    await User.create({ username: 'browser_friend', name: 'Browser Friend' });
+    await User.register(new User({ username: 'browser_friend', name: 'Browser Friend' }), 'browser-friend-password');
     const imageBase64 = (await fs.readFile(path.join(__dirname, '../public/images/logo.png'))).toString('base64');
     let report;
     const result = new Promise(resolve => { report = resolve; });

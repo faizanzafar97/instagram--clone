@@ -3,12 +3,14 @@
         <a href="/feed"><i class="text-[1.4rem] ri-home-line"></i></a>
         <a href="/search"><i class="text-[1.4rem] ri-search-line"></i></a>
         <a href="/upload"><i class="text-[1.4rem] ri-add-box-line"></i></a>
+        <a href="/notifications" class="notification-link relative" aria-label="Notifications"><i class="text-[1.4rem] ri-heart-3-line"></i><span class="notification-badge text-xs bg-red-500 rounded-full px-1" hidden></span></a>
         <a href="/profile">
           <div class="w-8 h-8 bg-zinc-300 rounded-full overflow-hidden">
             <img class="w-full h-full object-cover" src="/images/uploads/<%= user.picture %>" alt="">
           </div>
         </a>
       </div>
+      <script src="/javascripts/notifications.js" defer></script>
 <% } %>
 
 

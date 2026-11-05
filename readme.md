@@ -9,6 +9,8 @@ npm start
 
 Open http://localhost:3000/ and create an account. Existing users can log in at http://localhost:3000/login. The feed at http://localhost:3000/feed requires login and redirects visitors to the login page.
 
+The home feed shows your own posts and posts from accounts you follow. A new account starts with an empty feed. Your profile shows only your posts; switching accounts does not transfer posts between them.
+
 Start the server with `npm start`; running `node app.js` does not start an HTTP listener. Restart the server after changing files.
 
 Run `npm test` to check the pages and authentication flow. Tests require MongoDB and use a separate temporary database that is deleted after the run. Optionally set `TEST_MONGODB_URI` to select a test MongoDB server.

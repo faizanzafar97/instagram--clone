@@ -9,10 +9,11 @@ var mongoose = require('mongoose');
 
 var indexRouter = require('./routes/index');
 var userModel = require('./routes/users');
+var notificationModel = require('./routes/notifications');
 const passport = require('passport');
 
 var app = express();
-const databaseReady = mongoose.connection.asPromise().then(() => userModel.init());
+const databaseReady = mongoose.connection.asPromise().then(() => Promise.all([userModel.init(), notificationModel.init()]));
 databaseReady.catch(function(err) {
   console.error('Database initialization failed:', err.message);
 });

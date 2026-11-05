@@ -46,11 +46,14 @@
           empty.className = 'feedempty px-4 py-10 text-center';
           const text = document.createElement('p');
           text.textContent = 'No posts yet.';
+          const hint = document.createElement('p');
+          hint.className = 'text-sm text-zinc-400 mt-2';
+          hint.textContent = 'Your posts and posts from people you follow appear here.';
           const link = document.createElement('a');
           link.href = '/upload';
           link.className = 'text-blue-500';
           link.textContent = 'Share your first photo';
-          empty.append(text, link);
+          empty.append(text, hint, link);
           posts.append(empty);
           link.focus();
         } else if (next) {
