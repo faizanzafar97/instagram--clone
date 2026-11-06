@@ -32,7 +32,7 @@
         <% }) %>
     </div>
     <p id="feederror" role="alert" class="px-4 text-red-500" hidden></p>
-    <div data-userid="<%= user.id %>" class="posts parent mb-20">
+    <div data-userid="<%= user.id %>" class="posts parent">
       <% if (posts.length === 0) { %>
         <div class="feedempty px-4 py-10 text-center">
           <p>No posts yet.</p>
@@ -40,14 +40,18 @@
           <a class="text-blue-500" href="/upload">Share your first photo</a>
         </div>
       <% } %>
-      <% posts.forEach(function(post){ %>
-        <% include ./partials/post.ejs %>
-        <% }) %>
+      <% include ./partials/feed-posts.ejs %>
+    </div>
+    <div class="px-4 py-6 mb-20 text-center">
+      <button id="loadmore" type="button" class="rounded bg-zinc-800 px-5 py-2 text-blue-500" data-cursor="<%= nextCursor || '' %>" <%= nextCursor ? '' : 'hidden' %>>Load more</button>
+      <p id="loadmorestatus" class="mt-3 text-sm text-zinc-400" role="status"><%= posts.length && !nextCursor ? 'You’re all caught up.' : '' %></p>
+      <p id="loadmoreerror" class="mt-3 text-sm text-red-500" role="alert" hidden></p>
     </div>
   </div>
 
   <script src="/javascripts/feed.js" defer></script>
   <script src="/javascripts/comments.js" defer></script>
   <script src="/javascripts/post-actions.js" defer></script>
+  <script src="/javascripts/load-more.js" defer></script>
 
 <% include ./partials/footer.ejs %>

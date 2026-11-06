@@ -11,6 +11,8 @@ Open http://localhost:3000/ and create an account. Existing users can log in at 
 
 The home feed shows your own posts and posts from accounts you follow. A new account starts with an empty feed. Your profile shows only your posts; switching accounts does not transfer posts between them.
 
+The feed loads 10 posts at a time, newest first. Select "Load more" for older posts. Likes, saved posts, comments and owner controls work on newly loaded posts too.
+
 Open a post at `/posts/:postid` from the feed's "View post" link, a profile thumbnail, or a notification. The page shows the full photo, caption, likes, saved status, comments and replies. Only the owner sees caption editing and deletion controls. Login is required.
 
 Stories are visible for 24 hours after upload, including stories created before expiration was added. Expired stories cannot be opened. While the app is running, background cleanup removes expired story records, user references and unshared uploaded images in batches of 100 every minute, with a cleanup pass on startup.

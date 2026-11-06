@@ -46,6 +46,12 @@
         const next = post.nextElementSibling || post.previousElementSibling;
         post.remove();
         if (!posts.querySelector('.post')) {
+          const loadMore = document.querySelector('#loadmore');
+          if (loadMore && loadMore.dataset.cursor) {
+            document.querySelector('#loadmorestatus').textContent = 'Load more to see older posts.';
+            loadMore.focus();
+            return;
+          }
           const empty = document.createElement('div');
           empty.className = 'feedempty px-4 py-10 text-center';
           const text = document.createElement('p');

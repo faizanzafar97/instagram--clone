@@ -30,4 +30,6 @@ const postSchema = mongoose.Schema({
 })
 
 
+postSchema.index({ user: 1, date: -1, _id: -1 });
+
 module.exports = mongoose.model("post", postSchema);

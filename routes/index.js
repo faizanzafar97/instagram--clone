@@ -11,6 +11,7 @@ const mongoose = require('mongoose');
 passport.use(new localStrategy(userModel.authenticate()));
 const upload = require("./multer");
 const utils = require("../utils/utils");
+const { getFeedPage } = require('../utils/feed-pagination');
 
 // Express 4 does not forward rejected async handlers to the error middleware.
 function asyncRoute(handler) {
@@ -165,8 +166,17 @@ router.post('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (re
   } });
 }));
 
-router.get("/feed", isLoggedIn, asyncRoute(async function (req, res) {
+router.get("/feed", isLoggedIn, asyncRoute(async function (req, res, next) {
   const user = req.user;
+  const page = await getFeedPage(user, req.query.before);
+  if (req.accepts(['html', 'json']) === 'json') {
+    return res.render('partials/feed-posts', {
+      posts: page.posts, user, postDetail: false, dater: utils.formatRelativeTime
+    }, function (err, html) {
+      if (err) return next(err);
+      res.json({ html, nextCursor: page.nextCursor, userId: user.id });
+    });
+  }
   const stories = await storyModel.find({ user: { $ne: user._id }, ...storyModel.activeFilter() })
     .sort({ date: -1, _id: -1 }).populate("user");
   const seen = new Set();
@@ -175,12 +185,11 @@ router.get("/feed", isLoggedIn, asyncRoute(async function (req, res) {
     seen.add(story.user.id);
     return true;
   });
-  const posts = await postModel.find({ user: { $in: [user._id, ...user.following] } })
-    .sort({ date: -1, _id: -1 }).populate("user");
   res.render("feed", {
     footer: true,
     user,
-    posts: posts.filter(post => post.user),
+    posts: page.posts,
+    nextCursor: page.nextCursor,
     stories: filtered,
     dater: utils.formatRelativeTime,
   });

@@ -238,6 +238,50 @@ async function browserScenario(imageBase64) {
       frame.contentDocument.querySelector('.notification-list').textContent.includes('browser_tester'), 'Notifications belong to the signed-in recipient');
     const publicPost = await fetch('/posts/' + postId);
     check(publicPost.status === 404, 'Deleted posts cannot be opened at their detail URL');
+    await navigate('/feed');
+    check(frame.contentDocument.querySelectorAll('.post').length === 10, 'Feed initially loads ten posts');
+    const loadMore = frame.contentDocument.querySelector('#loadmore');
+    const initialCursor = loadMore.dataset.cursor;
+    const originalFetch = frame.contentWindow.fetch.bind(frame.contentWindow);
+    frame.contentWindow.fetch = function (url, options) {
+      if (String(url).startsWith('/feed?before=')) return Promise.reject(new Error('Simulated loading failure'));
+      return originalFetch(url, options);
+    };
+    loadMore.click();
+    await waitFor(() => !frame.contentDocument.querySelector('#loadmoreerror').hidden && !loadMore.disabled);
+    check(frame.contentDocument.querySelectorAll('.post').length === 10 && loadMore.dataset.cursor === initialCursor,
+      'Failed load keeps existing posts and can be retried');
+    frame.contentWindow.fetch = originalFetch;
+    loadMore.click();
+    loadMore.click();
+    await waitFor(() => frame.contentDocument.querySelectorAll('.post').length === 20 && !loadMore.disabled);
+    check(new Set(Array.from(frame.contentDocument.querySelectorAll('.post'), post => post.dataset.postid)).size === 20,
+      'Load more appends ten older posts without duplicates');
+    loadMore.click();
+    await waitFor(() => frame.contentDocument.querySelectorAll('.post').length === 23 && !loadMore.disabled);
+    check(loadMore.hidden && frame.contentDocument.querySelector('#loadmorestatus').textContent.includes('caught up'),
+      'Last page hides Load more and announces the end');
+    const appended = Array.from(frame.contentDocument.querySelectorAll('.post')).at(-1);
+    check(appended.querySelector('.post-caption').textContent.includes('<img src=x') &&
+      !appended.querySelector('.post-caption img') && !frame.contentWindow.badPage,
+      'Loaded captions are escaped');
+    const appendedLike = appended.querySelector('.likebutton');
+    appendedLike.click();
+    await waitFor(() => appendedLike.getAttribute('aria-pressed') === 'true');
+    const appendedSave = appended.querySelector('.savebutton');
+    appendedSave.click();
+    await waitFor(() => appendedSave.getAttribute('aria-pressed') === 'true');
+    appended.querySelector('.commenttoggle').click();
+    const appendedInput = appended.querySelector('.commentform textarea');
+    await waitFor(() => !appendedInput.disabled);
+    appendedInput.value = 'Comment on a loaded post';
+    appended.querySelector('.commentform').requestSubmit();
+    await waitFor(() => appended.querySelector('.comment-entry') && !appendedInput.disabled);
+    appended.querySelector('.editpost').click();
+    appended.querySelector('.editpostform textarea').value = 'Edited loaded post';
+    appended.querySelector('.editpostform').requestSubmit();
+    await waitFor(() => appended.querySelector('.post-caption').textContent === 'Edited loaded post');
+    check(true, 'Likes, saves, comments and caption editing work on appended posts');
     await navigate('/logout');
     check(frame.contentWindow.location.pathname === '/login', 'Logout returns to login');
     await fetch('/__browser-check-result', { method: 'POST', body: JSON.stringify({ ok: true, checks }) });
@@ -258,7 +302,11 @@ async function browserScenario(imageBase64) {
   let server, browser, temporaryDirectory, timer;
   try {
     await app.locals.databaseReady;
-    await User.register(new User({ username: 'browser_friend', name: 'Browser Friend' }), 'browser-friend-password');
+    const friend = await User.register(new User({ username: 'browser_friend', name: 'Browser Friend' }), 'browser-friend-password');
+    await Post.insertMany(Array.from({ length: 23 }, (_, index) => ({
+      user: friend._id, picture: 'default-avatar.svg', date: new Date(Date.now() - (index + 1) * 60000),
+      caption: index === 22 ? '<img src=x onerror="window.badPage=true">' : 'Older browser post ' + index
+    })));
     const imageBase64 = (await fs.readFile(path.join(__dirname, '../public/images/logo.png'))).toString('base64');
     let report;
     const result = new Promise(resolve => { report = resolve; });
