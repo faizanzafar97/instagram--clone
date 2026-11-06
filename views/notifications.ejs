@@ -17,7 +17,7 @@
       <article class="notification-item border-b border-zinc-800 py-4" data-notificationid="<%= notification.id %>" data-read="<%= notification.read %>">
         <% const destination = notification.type === 'follow'
           ? (notification.actor ? '/profile/' + encodeURIComponent(notification.actor.username) : '/notifications')
-          : (notification.post ? '/feed#post-' + notification.post.id : '/notifications'); %>
+          : (notification.post ? '/posts/' + notification.post.id : '/notifications'); %>
         <a class="notification-open flex items-start gap-3" href="<%= destination %>">
           <img class="w-10 h-10 rounded-full object-cover" src="/images/uploads/<%= notification.actor ? notification.actor.picture : 'default-avatar.svg' %>" alt="">
           <div class="flex-1 min-w-0">

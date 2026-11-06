@@ -1,0 +1,15 @@
+<% include ./partials/header.ejs %>
+<main class="w-full min-h-screen bg-zinc-900 text-white py-5">
+  <div class="px-4 flex items-center justify-between">
+    <h1 class="text-xl font-semibold">Post</h1>
+    <a class="text-blue-500" href="/feed">Back to feed</a>
+  </div>
+  <p id="feederror" role="alert" class="px-4 text-red-500" hidden></p>
+  <div data-userid="<%= user.id %>" data-detail="true" class="posts parent mb-20">
+    <% include ./partials/post.ejs %>
+  </div>
+</main>
+<script src="/javascripts/feed.js" defer></script>
+<script src="/javascripts/comments.js" defer></script>
+<script src="/javascripts/post-actions.js" defer></script>
+<% include ./partials/footer.ejs %>

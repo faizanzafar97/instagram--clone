@@ -39,6 +39,10 @@
         panels(post, false, false);
         focusTarget = post.querySelector('.editpost');
       } else {
+        if (posts.dataset.detail === 'true') {
+          window.location.replace('/feed');
+          return;
+        }
         const next = post.nextElementSibling || post.previousElementSibling;
         post.remove();
         if (!posts.querySelector('.post')) {

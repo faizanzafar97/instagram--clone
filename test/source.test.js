@@ -28,6 +28,8 @@ test('all application JavaScript and EJS templates compile', function () {
     const html = ejs.render(fs.readFileSync(file, 'utf8'), {
       footer: true, user, userprofile: user, posts: [], stories: [], notifications: [], dater: formatRelativeTime,
       story: { user, story: 'default-avatar.svg' }, message: 'Example error', error: { status: 404 },
+      post: { id: 'post', user, caption: 'Example caption', picture: 'default-avatar.svg', like: [], comments: [], date: new Date() },
+      postDetail: true,
     }, { filename: file });
     for (const [, script] of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
       new vm.Script(script, { filename: file });

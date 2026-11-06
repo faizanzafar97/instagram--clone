@@ -97,6 +97,12 @@ router.get("/like/:postid", isLoggedIn, asyncRoute(async function (req, res) {
   res.json({ _id: updated.id, like: updated.like });
 }));
 
+router.get('/posts/:postid', isLoggedIn, asyncRoute(async function (req, res) {
+  const post = await postModel.findById(req.params.postid).populate('user', 'username picture');
+  if (!post || !post.user) throw createError(404, 'Post not found');
+  res.render('post', { footer: true, user: req.user, post, postDetail: true, dater: utils.formatRelativeTime });
+}));
+
 router.get('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (req, res) {
   const post = await postModel.findById(req.params.postid).select('comments')
     .populate('comments.user', 'username picture');

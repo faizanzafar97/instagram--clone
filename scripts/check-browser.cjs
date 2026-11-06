@@ -96,6 +96,42 @@ async function browserScenario(imageBase64) {
     check(frame.contentDocument.querySelector('.comment-replies p').textContent === 'Browser reply', 'Comments and replies survive reload');
     frame.contentDocument.querySelector('.commenttoggle').click();
     check(frame.contentDocument.querySelector('.comments-panel').hidden, 'Comments can be collapsed');
+    const detailUrl = frame.contentDocument.querySelector('.postdetail-link').getAttribute('href');
+    await new Promise(resolve => {
+      frame.onload = resolve;
+      frame.contentDocument.querySelector('.postdetail-link').click();
+    });
+    check(frame.contentWindow.location.pathname === detailUrl && frame.contentDocument.querySelectorAll('.post').length === 1,
+      'View post opens a dedicated page for one post');
+    await waitFor(() => frame.contentDocument.querySelectorAll('.comment-entry').length === 2);
+    check(!frame.contentDocument.querySelector('.comments-panel').hidden, 'Post detail loads comments and replies automatically');
+    const detailLike = frame.contentDocument.querySelector('.likebutton');
+    detailLike.click();
+    await waitFor(() => detailLike.getAttribute('aria-pressed') === 'true');
+    detailLike.click();
+    await waitFor(() => detailLike.getAttribute('aria-pressed') === 'false');
+    const detailSave = frame.contentDocument.querySelector('.savebutton');
+    detailSave.click();
+    await waitFor(() => detailSave.getAttribute('aria-pressed') === 'true');
+    detailSave.click();
+    await waitFor(() => detailSave.getAttribute('aria-pressed') === 'false');
+    check(true, 'Likes and saved posts work on the detail page');
+    const detailInput = frame.contentDocument.querySelector('.commentform textarea');
+    detailInput.value = 'Comment from the post detail';
+    frame.contentDocument.querySelector('.commentform').requestSubmit();
+    await waitFor(() => frame.contentDocument.querySelectorAll('.comment-entry').length === 3 && !detailInput.disabled);
+    frame.contentDocument.querySelector('.replybutton').click();
+    detailInput.value = 'Reply from the post detail';
+    frame.contentDocument.querySelector('.commentform').requestSubmit();
+    await waitFor(() => frame.contentDocument.querySelectorAll('.comment-entry').length === 4 && !detailInput.disabled);
+    check(frame.contentDocument.querySelector('.comments-list').textContent.includes('Reply from the post detail'),
+      'Comments and replies can be submitted from the detail page');
+    await navigate('/profile');
+    await new Promise(resolve => {
+      frame.onload = resolve;
+      frame.contentDocument.querySelector('.post a').click();
+    });
+    check(frame.contentWindow.location.pathname === detailUrl, 'Profile thumbnails open the post detail');
     frame.contentDocument.querySelector('.editpost').click();
     const captionInput = frame.contentDocument.querySelector('.editpostform textarea');
     check(captionInput.value === 'Browser test photo', 'Caption editor loads the current caption');
@@ -133,6 +169,9 @@ async function browserScenario(imageBase64) {
     await navigate('/feed');
     check(frame.contentDocument.querySelector('.post').dataset.postid === postId, 'Switching back restores the original account own post');
     await login('browser_friend', 'browser-friend-password');
+    await navigate(detailUrl);
+    check(!frame.contentDocument.querySelector('.editpost') && !frame.contentDocument.querySelector('.deletepost'),
+      'Visitors can view a post without seeing owner controls');
     await fetch('/like/' + postId);
     const notificationText = '<img src=x onerror="window.badNotification=true">';
     await fetch('/posts/' + postId + '/comments', {
@@ -148,7 +187,7 @@ async function browserScenario(imageBase64) {
     const likeNotification = Array.from(frame.contentDocument.querySelectorAll('.notification-open'))
       .find(link => link.textContent.includes('liked your post'));
     await new Promise(resolve => { frame.onload = resolve; likeNotification.click(); });
-    check(frame.contentWindow.location.hash === '#post-' + postId, 'Opening a notification navigates to its post');
+    check(frame.contentWindow.location.pathname === '/posts/' + postId, 'Opening a notification navigates to its post');
     await waitFor(() => frame.contentDocument.querySelector('.notification-badge').textContent === '2');
     check(true, 'Opening a notification marks only that notification read');
     await navigate('/notifications');
@@ -158,15 +197,18 @@ async function browserScenario(imageBase64) {
       frame.contentDocument.querySelector('.notification-badge').hidden, 'Mark all as read clears new indicators and the badge');
     await navigate('/notifications');
     check(Array.from(frame.contentDocument.querySelectorAll('.notification-item')).every(item => item.dataset.read === 'true'), 'Notification read status survives reload');
-    await navigate('/feed');
+    await navigate(detailUrl);
     frame.contentDocument.querySelector('.deletepost').click();
     check(!frame.contentDocument.querySelector('.deletepostconfirm').hidden, 'Delete asks for confirmation');
     frame.contentDocument.querySelector('.cancelpostdelete').click();
     check(frame.contentDocument.querySelector('.deletepostconfirm').hidden && frame.contentDocument.querySelector('.post'), 'Cancel keeps the post');
     const deletedImageUrl = frame.contentDocument.querySelector('.postimg').getAttribute('src');
     frame.contentDocument.querySelector('.deletepost').click();
-    frame.contentDocument.querySelector('.confirmdeletepost').click();
-    await waitFor(() => !frame.contentDocument.querySelector('.post'));
+    await new Promise(resolve => {
+      frame.onload = resolve;
+      frame.contentDocument.querySelector('.confirmdeletepost').click();
+    });
+    check(frame.contentWindow.location.pathname === '/feed', 'Deleting from the detail page returns to the feed');
     check(frame.contentDocument.querySelector('.feedempty'), 'Deleting the last post displays an empty feed');
     check((await fetch(deletedImageUrl)).status === 404, 'Deleting a post removes its uploaded image');
     await navigate('/feed');
@@ -194,6 +236,8 @@ async function browserScenario(imageBase64) {
     await navigate('/notifications');
     check(frame.contentDocument.querySelectorAll('.notification-item').length === 1 &&
       frame.contentDocument.querySelector('.notification-list').textContent.includes('browser_tester'), 'Notifications belong to the signed-in recipient');
+    const publicPost = await fetch('/posts/' + postId);
+    check(publicPost.status === 404, 'Deleted posts cannot be opened at their detail URL');
     await navigate('/logout');
     check(frame.contentWindow.location.pathname === '/login', 'Logout returns to login');
     await fetch('/__browser-check-result', { method: 'POST', body: JSON.stringify({ ok: true, checks }) });

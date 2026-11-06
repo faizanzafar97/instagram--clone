@@ -61,7 +61,7 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     for (const url of ['/', '/login', '/stylesheets/style.css', '/images/uploads/default-avatar.svg']) {
       assert.equal((await request(url)).status, 200, url);
     }
-    for (const url of ['/feed', '/profile', '/search', '/edit', '/upload', '/like/invalid', '/notifications']) {
+    for (const url of ['/feed', '/profile', '/search', '/edit', '/upload', '/like/invalid', '/notifications', '/posts/invalid']) {
       const response = await request(url);
       assert.equal(response.status, 302, url);
       assert.equal(response.location, '/login', url);
@@ -371,6 +371,38 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     await request('/follow/' + other.id);
   });
 
+  await t.test('individual post pages show one public post and keep owner actions private', async function () {
+    const viewer = await User.findOne({ username: 'page_tester' });
+    const author = await User.findOne({ username: 'other_user' });
+    const post = await Post.findOne({ user: author._id });
+    const ownPost = await Post.findOne({ user: viewer._id });
+    const page = await request('/posts/' + post.id);
+    assert.equal(page.status, 200);
+    assert.equal(page.cacheControl, 'no-store');
+    assert.match(page.body, /Visible test post/);
+    assert.ok(page.body.includes('/profile/' + author.username));
+    assert.ok(page.body.includes('/images/uploads/' + post.picture));
+    assert.ok(page.body.includes('data-userid="' + viewer.id + '"'));
+    assert.equal((page.body.match(/class="post mt-10/g) || []).length, 1);
+    assert.match(page.body, /aria-label="Hide comments" aria-expanded="true"/);
+    assert.match(page.body, /class="commentcount">4<\/span>/);
+    assert.doesNotMatch(page.body, /class="editpost text-blue-500"/);
+    assert.doesNotMatch(page.body, /class="deletepost text-red-500"/);
+    const ownPage = await request('/posts/' + ownPost.id);
+    assert.equal(ownPage.status, 200);
+    assert.match(ownPage.body, /class="editpost text-blue-500"/);
+    assert.match(ownPage.body, /class="deletepost text-red-500"/);
+    assert.ok((await request('/feed')).body.includes('href="/posts/' + ownPost.id + '"'));
+    assert.ok((await request('/profile')).body.includes('href="/posts/' + ownPost.id + '"'));
+    await User.updateOne({ _id: author._id }, { $addToSet: { posts: post._id } });
+    assert.ok((await request('/profile/' + author.username)).body.includes('href="/posts/' + post.id + '"'));
+    assert.equal((await request('/posts/invalid')).status, 400);
+    assert.equal((await request('/posts/' + new mongoose.Types.ObjectId())).status, 404);
+    const orphan = await Post.findOne({ caption: 'Deleted author' });
+    assert.equal((await request('/posts/' + orphan.id)).status, 404);
+    assert.equal((await request('/posts/' + post.id, { headers: { cookie: '', Accept: 'application/json' } })).status, 401);
+  });
+
   await t.test('notifications are private, persist read status, and track likes, comments and follows', async function () {
     const actor = await User.findOne({ username: 'page_tester' });
     const recipient = await User.findOne({ username: 'other_user' });
@@ -414,7 +446,7 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     assert.match(page.body, /started following you/);
     assert.match(page.body, /&lt;img src=x/);
     assert.doesNotMatch(page.body, /<img src=x/);
-    assert.ok(page.body.includes('/feed#post-' + post.id));
+    assert.ok(page.body.includes('/posts/' + post.id));
     assert.ok(page.body.includes('/profile/page_tester'));
     assert.equal((await request('/notifications/' + target.id + '/read', { method: 'POST', headers })).status, 200);
     assert.equal(await count(), 2);
@@ -495,6 +527,7 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
       assert.equal(user.saved.includes(post._id), false);
     }
     assert.equal((await request(url + '/comments')).status, 404);
+    assert.equal((await request(url)).status, 404);
     assert.equal((await request(url, { method: 'DELETE', headers })).status, 404);
     assert.doesNotMatch((await request('/profile')).body, new RegExp(post.picture));
     assert.equal((await request('/images/uploads/default-avatar.svg')).status, 200);

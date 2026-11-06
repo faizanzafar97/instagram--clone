@@ -176,4 +176,7 @@
       input.focus();
     }
   });
+  posts.querySelectorAll('.post').forEach(post => {
+    if (!post.querySelector('.comments-panel').hidden) load(post);
+  });
 })();

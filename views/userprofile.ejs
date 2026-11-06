@@ -41,7 +41,9 @@
         <% if(userprofile.posts.length>0){ %>
           <% userprofile.posts.forEach(function(post){ %>
             <div class="post w-[32.5%] h-32 bg-sky-100">
-              <img class="w-full h-full object-cover" src="/images/uploads/<%= post.picture %>" alt="">
+              <a class="block h-full" href="/posts/<%= post.id %>" aria-label="View post by <%= userprofile.username %>">
+                <img class="w-full h-full object-cover" src="/images/uploads/<%= post.picture %>" alt="">
+              </a>
             </div>
           <% }) %>
         <% } else { %>

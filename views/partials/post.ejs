@@ -1,0 +1,90 @@
+<% const detail = typeof postDetail !== "undefined" && postDetail; %>
+        <div id="post-<%= post.id %>" data-postid="<%= post.id %>" class="post mt-10 w-full min-h-[50vh]">
+          <div class="title px-4 flex items-center gap-2">
+            <div class="w-[9vw] h-[9vw] bg-sky-100 rounded-full overflow-hidden">
+              <img class="w-full h-full object-cover" src="/images/uploads/<%= post.user.picture %>" alt="">
+            </div>
+            <h4 class="text-sm">
+              <a href="/profile/<%= encodeURIComponent(post.user.username) %>"><%= post.user.username %></a>
+            </h4>
+            <h6 class="text-xs opacity-30">
+              <%= dater(new Date(post.date)) %>
+            </h6>
+            <% if (String(post.user._id) === String(user._id)) { %>
+              <div class="post-actions ml-auto flex gap-3 text-sm">
+                <button type="button" class="editpost text-blue-500" aria-expanded="false" aria-controls="edit-post-<%= post.id %>">Edit caption</button>
+                <button type="button" class="deletepost text-red-500" aria-expanded="false" aria-controls="delete-post-<%= post.id %>">Delete</button>
+              </div>
+            <% } %>
+          </div>
+          <% if (String(post.user._id) === String(user._id)) { %>
+            <form id="edit-post-<%= post.id %>" class="editpostform px-4 mt-3" hidden>
+              <label class="block text-sm mb-2" for="caption-<%= post.id %>">Edit caption</label>
+              <textarea id="caption-<%= post.id %>" name="caption" maxlength="2200" rows="3" class="w-full rounded bg-zinc-800 p-2"><%= post.caption || '' %></textarea>
+              <div class="flex gap-3 mt-2 text-sm">
+                <button type="submit" class="text-blue-500">Save caption</button>
+                <button type="button" class="cancelpostedit">Cancel</button>
+              </div>
+            </form>
+            <div id="delete-post-<%= post.id %>" class="deletepostconfirm px-4 mt-3 text-sm" hidden>
+              <p>Delete this post? Its photo, likes, comments, and replies will be removed permanently.</p>
+              <div class="flex gap-3 mt-2">
+                <button type="button" class="confirmdeletepost text-red-500">Delete post</button>
+                <button type="button" class="cancelpostdelete">Cancel</button>
+              </div>
+            </div>
+            <p class="post-action-error px-4 mt-2 text-sm text-red-500" role="alert" hidden></p>
+          <% } %>
+          <div class="relative w-full mt-4 <%= detail ? 'bg-black' : 'h-96 bg-sky-100 overflow-hidden' %>">
+            <img data-postid="<%= post.id %>" class="postimg w-full <%= detail ? 'max-h-[75vh] object-contain' : 'h-full object-cover' %>"
+              src="/images/uploads/<%= post.picture %>" alt="Post by <%= post.user.username %>">
+          </div>
+          <div class="options w-full px-4 flex justify-between items-center text-[1.4rem]">
+            <div class="flex gap-3 mt-2">
+              <% if(post.like.indexOf(user._id)===-1){ %>
+                <button type="button" class="likebutton" aria-label="Like post" aria-pressed="false"><i class="heart ri-heart-3-line"></i></button>
+                <% } else { %>
+                  <button type="button" class="likebutton" aria-label="Unlike post" aria-pressed="true"><i class="heart ri-heart-3-fill text-red-500"></i></button>
+                  <% } %>
+                    <button type="button" class="commenttoggle" aria-label="<%= detail ? 'Hide comments' : 'Show comments' %>" aria-expanded="<%= detail %>" aria-controls="comments-<%= post.id %>"><i class="ri-chat-3-line"></i></button>
+                    <i class="ri-share-circle-line"></i>
+            </div>
+            <% if(user.saved.indexOf(post.id)===-1){ %>
+              <button type="button" class="savebutton" aria-label="Save post" aria-pressed="false"><i class="save ri-bookmark-line"></i></button>
+              <% } else { %>
+                <button type="button" class="savebutton" aria-label="Unsave post" aria-pressed="true"><i class="save ri-bookmark-fill text-zinc-100"></i></button>
+                <% } %>
+          </div>
+          <h3 class="likeval px-4 mt-2 text-sm leading-none tracking-tight">
+            <%= post.like.length %> likes
+          </h3>
+          <h2 class="text-white font-light text-sm mt-2">
+            <span class="font-semibold pl-4 pr-2">
+              <%= post.user.username %>
+            </span>
+            <span class="post-caption whitespace-pre-wrap break-words"><%= post.caption %></span>
+          </h2>
+          <% if (!detail) { %>
+            <a class="postdetail-link block px-4 mt-2 text-sm text-blue-500" href="/posts/<%= post.id %>">View post</a>
+          <% } %>
+          <div class="px-4 mt-3 text-sm">
+            <button type="button" class="commenttoggle text-zinc-400" aria-expanded="<%= detail %>" aria-controls="comments-<%= post.id %>"><span class="commentcount"><%= post.comments.length %></span> comments</button>
+            <section id="comments-<%= post.id %>" class="comments-panel mt-3" aria-label="Post comments" <%= detail ? '' : 'hidden' %>>
+              <p class="comments-status text-zinc-400" role="status"></p>
+              <button type="button" class="comments-retry text-blue-500" hidden>Try again</button>
+              <div class="comments-list" aria-live="polite"></div>
+              <form class="commentform mt-3">
+                <div class="reply-context mb-2" hidden>
+                  <span class="reply-label text-zinc-400"></span>
+                  <button type="button" class="cancelreply text-blue-500 ml-2">Cancel</button>
+                </div>
+                <label class="block mb-2" for="comment-input-<%= post.id %>">Add a comment</label>
+                <div class="flex gap-2">
+                  <textarea id="comment-input-<%= post.id %>" name="text" rows="2" maxlength="1000" required class="w-full rounded bg-zinc-800 p-2" placeholder="Write a comment…"></textarea>
+                  <button type="submit" class="text-blue-500">Post</button>
+                </div>
+                <p class="comment-error text-red-500 mt-2" role="alert" hidden></p>
+              </form>
+            </section>
+          </div>
+        </div>
