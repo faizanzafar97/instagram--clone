@@ -10,6 +10,7 @@ var mongoose = require('mongoose');
 var indexRouter = require('./routes/index');
 var userModel = require('./routes/users');
 var notificationModel = require('./routes/notifications');
+const { startStoryExpiration } = require('./utils/story-expiration');
 const passport = require('passport');
 
 var app = express();
@@ -18,6 +19,7 @@ databaseReady.catch(function(err) {
   console.error('Database initialization failed:', err.message);
 });
 app.locals.databaseReady = databaseReady;
+databaseReady.then(startStoryExpiration, function () {});
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));

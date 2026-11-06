@@ -161,7 +161,8 @@ router.post('/posts/:postid/comments', isLoggedIn, asyncRoute(async function (re
 
 router.get("/feed", isLoggedIn, asyncRoute(async function (req, res) {
   const user = req.user;
-  const stories = await storyModel.find({ user: { $ne: user._id } }).sort({ date: -1, _id: -1 }).populate("user");
+  const stories = await storyModel.find({ user: { $ne: user._id }, ...storyModel.activeFilter() })
+    .sort({ date: -1, _id: -1 }).populate("user");
   const seen = new Set();
   const filtered = stories.filter(function (story) {
     if (!story.user || seen.has(story.user.id)) return false;
@@ -239,13 +240,13 @@ router.get("/upload", isLoggedIn, function (req, res) {
 });
 
 router.get("/story", isLoggedIn, asyncRoute(async function (req, res) {
-  const story = await storyModel.findOne({ user: req.user._id }).sort({ date: -1 });
+  const story = await storyModel.findOne({ user: req.user._id, ...storyModel.activeFilter() }).sort({ date: -1 });
   if (!story) return res.redirect("/upload");
   res.redirect(`/story/${story.id}`);
 }));
 
 router.get("/story/:storyid", isLoggedIn, asyncRoute(async function (req, res) {
-  const story = await storyModel.findById(req.params.storyid).populate("user");
+  const story = await storyModel.findOne({ _id: req.params.storyid, ...storyModel.activeFilter() }).populate("user");
   if (!story || !story.user) throw createError(404, "Story not found");
   res.render("story", { footer: true, user: req.user, story });
 }));

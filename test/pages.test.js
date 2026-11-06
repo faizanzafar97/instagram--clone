@@ -15,6 +15,7 @@ const User = require('../routes/users');
 const Post = require('../routes/posts');
 const Story = require('../routes/story');
 const Notification = require('../routes/notifications');
+const { removeExpiredStories } = require('../utils/story-expiration');
 
 test('pages, authentication, and route failures', { timeout: 30000 }, async function (t) {
   let server;
@@ -23,7 +24,7 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
   t.after(async function () {
     if (server) await new Promise(resolve => server.close(resolve));
     for (const filename of uploadedFiles) {
-      await fs.unlink(path.join(__dirname, '../public/images/uploads', filename));
+      await fs.rm(path.join(__dirname, '../public/images/uploads', filename), { force: true });
     }
     if (mongoose.connection.name === databaseName) await mongoose.connection.dropDatabase();
     await mongoose.disconnect();
@@ -129,6 +130,63 @@ test('pages, authentication, and route failures', { timeout: 30000 }, async func
     assert.equal((await request('/story/' + story.id)).status, 200);
     assert.equal((await request('/profile/other_user')).status, 200);
     await request('/follow/' + author.id);
+  });
+
+  await t.test('stories expire at exactly 24 hours in the feed and both story routes', async function () {
+    const owner = await User.findOne({ username: 'page_tester' });
+    const author = await User.create({ username: 'story_expiration_author' });
+    const expiredAuthor = await User.create({ username: 'expired_story_author' });
+    const realNow = Date.now;
+    let now = realNow();
+    const cutoff = now - 24 * 60 * 60 * 1000;
+    // Insert an old-format record directly: existing stories need no migration.
+    const legacy = await Story.collection.insertOne({ user: author._id, story: 'default-avatar.svg', date: new Date(cutoff - 1) });
+    const boundary = await Story.create({ user: expiredAuthor._id, story: 'default-avatar.svg', date: new Date(cutoff) });
+    const inside = await Story.create({ user: author._id, story: 'default-avatar.svg', date: new Date(cutoff + 1) });
+    const ownExpired = await Story.create({ user: owner._id, story: 'default-avatar.svg', date: new Date(cutoff) });
+    Date.now = () => now;
+    try {
+      const page = await request('/feed');
+      assert.equal(page.status, 200);
+      assert.ok(page.body.includes('/story/' + inside.id));
+      for (const id of [legacy.insertedId, boundary.id, ownExpired.id]) {
+        assert.ok(!page.body.includes('/story/' + id));
+        assert.equal((await request('/story/' + id)).status, 404);
+      }
+      assert.equal((await request('/story/' + inside.id)).status, 200);
+      assert.equal((await request('/story')).location, '/upload', 'an expired own story is not reopened');
+      assert.equal((await request('/story/invalid')).status, 400);
+      now += 1;
+      assert.equal((await request('/story/' + inside.id)).status, 404, 'the story expires at the exact millisecond boundary');
+      assert.ok(!(await request('/feed')).body.includes('/story/' + inside.id));
+    } finally { Date.now = realNow; }
+  });
+
+  await t.test('expired story cleanup removes records, references and unshared images while preserving active content', async function () {
+    const author = await User.findOne({ username: 'story_expiration_author' });
+    const now = Date.now();
+    const expiredDate = new Date(now - 24 * 60 * 60 * 1000);
+    const filenames = Array.from({ length: 4 }, () => randomUUID().replace(/-/g, '') + '.png');
+    const image = await fs.readFile(path.join(__dirname, '../public/images/logo.png'));
+    for (const filename of filenames) {
+      uploadedFiles.push(filename);
+      await fs.writeFile(path.join(__dirname, '../public/images/uploads', filename), image);
+    }
+    const expired = await Story.create(filenames.map(story => ({ user: author._id, story, date: expiredDate })));
+    const active = await Story.create({ user: author._id, story: filenames[1] });
+    const post = await Post.create({ user: author._id, picture: filenames[2], caption: 'Shared story image' });
+    await User.updateOne({ _id: author._id }, {
+      $set: { picture: filenames[3] }, $addToSet: { stories: { $each: [...expired.map(story => story._id), active._id] } }
+    });
+    assert.ok(await removeExpiredStories(now) >= 4);
+    for (const story of expired) assert.equal(await Story.findById(story._id), null);
+    assert.ok(await Story.findById(active._id));
+    assert.deepEqual((await User.findById(author._id)).stories.map(String), [active.id]);
+    await assert.rejects(fs.access(path.join(__dirname, '../public/images/uploads', filenames[0])), { code: 'ENOENT' });
+    for (const filename of filenames.slice(1)) await fs.access(path.join(__dirname, '../public/images/uploads', filename));
+    assert.ok(await Post.findById(post._id));
+    assert.equal((await request('/images/uploads/default-avatar.svg')).status, 200);
+    assert.equal(await removeExpiredStories(now), 0, 'cleanup can safely run again');
   });
 
   await t.test('image uploads create posts and stories that load in the feed', async function () {
